@@ -118,3 +118,163 @@ theorem relEntropy_eq_zero_iff {ι : Type*} [Fintype ι] (p q : ι → ℝ)
     rw [div_self (hq i).ne', Real.log_one, mul_zero]
 
 #print axioms relEntropy_eq_zero_iff
+
+/-!
+## Quadratic lower bound on `klFun` (analytic core of Pinsker's inequality)
+
+We prove `3 * (x - 1) ^ 2 / (2 * x + 4) ≤ x * log x + 1 - x` for `x ≥ 0`.
+After clearing the (positive) denominator this is `0 ≤ F x` for
+`F x = (2 * x + 4) * (x * log x + 1 - x) - 3 * (x - 1) ^ 2`.
+We show `F` is convex on `[0, ∞)` (its second derivative `4 * (log x - (1 - x⁻¹)) ≥ 0`) and has a
+horizontal tangent at `x = 1` with `F 1 = 0`, so `F` attains its minimum value `0` there.
+-/
+
+/-- Cleared-denominator function `F x = (2x+4)·(x log x + 1 - x) - 3(x-1)²`. -/
+private noncomputable def pinskerF (x : ℝ) : ℝ :=
+  (2 * x + 4) * (x * Real.log x + 1 - x) - 3 * (x - 1) ^ 2
+
+/-- First derivative of `pinskerF` (valid for `x ≠ 0`). -/
+private noncomputable def pinskerDF (x : ℝ) : ℝ :=
+  (4 * x + 4) * Real.log x - 8 * x + 8
+
+/-- Second derivative of `pinskerF` (valid for `x ≠ 0`). -/
+private noncomputable def pinskerD2F (x : ℝ) : ℝ :=
+  4 * Real.log x + 4 * x⁻¹ - 4
+
+private lemma hasDerivAt_pinskerF {x : ℝ} (hx : x ≠ 0) :
+    HasDerivAt pinskerF (pinskerDF x) x := by
+  unfold pinskerF pinskerDF
+  have hv : HasDerivAt (fun y : ℝ => y * Real.log y + 1 - y) (Real.log x + 1 - 1) x :=
+    ((Real.hasDerivAt_mul_log hx).add_const 1).sub (hasDerivAt_id' x)
+  have hu : HasDerivAt (fun y : ℝ => 2 * y + 4) _ x :=
+    ((hasDerivAt_id' x).const_mul (2 : ℝ)).add_const 4
+  have hw : HasDerivAt (fun y : ℝ => 3 * (y - 1) ^ 2) _ x :=
+    (((hasDerivAt_id' x).sub_const 1).pow 2).const_mul (3 : ℝ)
+  convert (hu.mul hv).sub hw using 1
+  push_cast
+  ring
+
+private lemma hasDerivAt_pinskerDF {x : ℝ} (hx : x ≠ 0) :
+    HasDerivAt pinskerDF (pinskerD2F x) x := by
+  unfold pinskerDF pinskerD2F
+  have ha : HasDerivAt (fun y : ℝ => 4 * y + 4) _ x :=
+    ((hasDerivAt_id' x).const_mul (4 : ℝ)).add_const 4
+  have h : HasDerivAt (fun y : ℝ => (4 * y + 4) * Real.log y - 8 * y + 8) _ x :=
+    ((ha.mul (Real.hasDerivAt_log hx)).sub ((hasDerivAt_id' x).const_mul (8 : ℝ))).add_const 8
+  convert h using 1
+  field_simp
+  ring
+
+private lemma continuous_pinskerF : Continuous pinskerF := by
+  unfold pinskerF
+  fun_prop
+
+private lemma pinskerD2F_nonneg {x : ℝ} (hx : 0 < x) : 0 ≤ pinskerD2F x := by
+  have h := Real.one_sub_inv_le_log_of_pos hx
+  unfold pinskerD2F
+  linarith
+
+private lemma pinskerF_nonneg {x : ℝ} (hx : 0 ≤ x) : 0 ≤ pinskerF x := by
+  -- `pinskerF` is convex on `[0, ∞)` because its second derivative is nonnegative there.
+  have hconvex : ConvexOn ℝ (Set.Ici 0) pinskerF :=
+    convexOn_of_hasDerivWithinAt2_nonneg (f' := pinskerDF) (f'' := pinskerD2F)
+      (convex_Ici 0) continuous_pinskerF.continuousOn
+      (fun y hy => by
+        rw [interior_Ici] at hy
+        exact (hasDerivAt_pinskerF (Set.mem_Ioi.mp hy).ne').hasDerivWithinAt)
+      (fun y hy => by
+        rw [interior_Ici] at hy
+        exact (hasDerivAt_pinskerDF (Set.mem_Ioi.mp hy).ne').hasDerivWithinAt)
+      (fun y hy => by
+        rw [interior_Ici] at hy
+        exact pinskerD2F_nonneg (Set.mem_Ioi.mp hy))
+  -- The right derivative at `1` vanishes, so `1` is a global minimiser on `[0, ∞)`.
+  have hrd : derivWithin pinskerF (Set.Ioi 1) 1 = 0 := by
+    rw [(hasDerivAt_pinskerF one_ne_zero).hasDerivWithinAt.derivWithin (uniqueDiffWithinAt_Ioi 1)]
+    simp only [pinskerDF, Real.log_one]
+    ring
+  have hmin : IsMinOn pinskerF (Set.Ici 0) 1 :=
+    hconvex.isMinOn_of_rightDeriv_eq_zero (by rw [interior_Ici]; exact Set.mem_Ioi.mpr one_pos) hrd
+  have hF1 : pinskerF 1 = 0 := by simp only [pinskerF, Real.log_one]; ring
+  have h := isMinOn_iff.mp hmin x (Set.mem_Ici.mpr hx)
+  rwa [hF1] at h
+
+/-- Quadratic (rational) lower bound on `klFun x = x * log x + 1 - x`, the analytic core of the
+finite Pinsker inequality. The constant `3 / (2x + 4)` is tuned so that summing this bound over a
+finite distribution yields Pinsker's inequality with the sharp constant `1 / 2`. -/
+lemma klFun_quad_lower (x : ℝ) (hx : 0 ≤ x) :
+    3 * (x - 1) ^ 2 / (2 * x + 4) ≤ x * Real.log x + 1 - x := by
+  have hpos : (0 : ℝ) < 2 * x + 4 := by linarith
+  rw [div_le_iff₀ hpos]
+  have h := pinskerF_nonneg hx
+  unfold pinskerF at h
+  nlinarith [h]
+
+#print axioms klFun_quad_lower
+
+/-!
+## Pinsker's inequality for finite distributions
+
+`(1/2) * (∑ |p i - q i|)² ≤ ∑ p i * log (p i / q i)`, assembled from the per-coordinate quadratic
+bound `klFun_quad_lower` and the Engel/Titu form of Cauchy–Schwarz
+(`Finset.sq_sum_div_le_sum_sq_div`) with weights `(2 p i + 4 q i) / 3`.
+-/
+
+/-- Per-coordinate bound: scaling `klFun_quad_lower` at `x = p / q` by `q`. -/
+private lemma pinsker_term {p q : ℝ} (hp : 0 ≤ p) (hq : 0 < q) :
+    3 * (p - q) ^ 2 / (2 * p + 4 * q) ≤ p * Real.log (p / q) + q - p := by
+  have hq0 : q ≠ 0 := hq.ne'
+  have hpq : 0 ≤ p / q := div_nonneg hp hq.le
+  have hd1 : (0 : ℝ) < 2 * (p / q) + 4 := by linarith
+  have hd2 : (0 : ℝ) < 2 * p + 4 * q := by linarith
+  have hkey := klFun_quad_lower (p / q) hpq
+  rw [div_le_iff₀ hd1] at hkey
+  rw [div_le_iff₀ hd2]
+  have e1 : q ^ 2 * (3 * (p / q - 1) ^ 2) = 3 * (p - q) ^ 2 := by
+    field_simp
+  have e2 : q ^ 2 * ((p / q * Real.log (p / q) + 1 - p / q) * (2 * (p / q) + 4))
+      = (p * Real.log (p / q) + q - p) * (2 * p + 4 * q) := by
+    field_simp
+  calc 3 * (p - q) ^ 2
+      = q ^ 2 * (3 * (p / q - 1) ^ 2) := e1.symm
+    _ ≤ q ^ 2 * ((p / q * Real.log (p / q) + 1 - p / q) * (2 * (p / q) + 4)) :=
+        mul_le_mul_of_nonneg_left hkey (sq_nonneg q)
+    _ = (p * Real.log (p / q) + q - p) * (2 * p + 4 * q) := e2
+
+/-- **Pinsker's inequality** for finite probability distributions:
+the squared total-variation distance is bounded by twice the relative entropy. -/
+theorem pinsker {ι : Type*} [Fintype ι] (p q : ι → ℝ)
+    (hp : ∀ i, 0 ≤ p i) (hq : ∀ i, 0 < q i)
+    (hp1 : ∑ i, p i = 1) (hq1 : ∑ i, q i = 1) :
+    (1 / 2) * (∑ i, |p i - q i|) ^ 2 ≤ ∑ i, p i * Real.log (p i / q i) := by
+  -- Engel/Titu form of Cauchy–Schwarz with positive weights `g i = (2 p i + 4 q i) / 3`.
+  have hgpos : ∀ i ∈ Finset.univ, 0 < (2 * p i + 4 * q i) / 3 := by
+    intro i _
+    have h1 := hp i; have h2 := hq i; positivity
+  have hCS := Finset.sq_sum_div_le_sum_sq_div Finset.univ (fun i => |p i - q i|) hgpos
+  -- The weights sum to `2`.
+  have hsumg : ∑ i, (2 * p i + 4 * q i) / 3 = 2 := by
+    rw [← Finset.sum_div, Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.mul_sum, hp1, hq1]
+    norm_num
+  -- Each Cauchy–Schwarz term is the per-coordinate quadratic from `pinsker_term`.
+  have hterm_eq : ∀ i, |p i - q i| ^ 2 / ((2 * p i + 4 * q i) / 3)
+      = 3 * (p i - q i) ^ 2 / (2 * p i + 4 * q i) := by
+    intro i
+    have h2 : (2 * p i + 4 * q i) ≠ 0 := by have h1 := hp i; have h3 := hq i; positivity
+    rw [sq_abs]
+    field_simp
+  -- Chain everything; the `+ q i - p i` bookkeeping cancels via `∑ q = ∑ p = 1`.
+  have step1 : (∑ i, |p i - q i|) ^ 2 / 2 ≤ ∑ i, p i * Real.log (p i / q i) := by
+    calc (∑ i, |p i - q i|) ^ 2 / 2
+        = (∑ i, |p i - q i|) ^ 2 / (∑ i, (2 * p i + 4 * q i) / 3) := by rw [hsumg]
+      _ ≤ ∑ i, |p i - q i| ^ 2 / ((2 * p i + 4 * q i) / 3) := hCS
+      _ = ∑ i, 3 * (p i - q i) ^ 2 / (2 * p i + 4 * q i) :=
+          Finset.sum_congr rfl (fun i _ => hterm_eq i)
+      _ ≤ ∑ i, (p i * Real.log (p i / q i) + q i - p i) :=
+          Finset.sum_le_sum (fun i _ => pinsker_term (hp i) (hq i))
+      _ = ∑ i, p i * Real.log (p i / q i) + (∑ i, q i) - ∑ i, p i := by
+          rw [Finset.sum_sub_distrib, Finset.sum_add_distrib]
+      _ = ∑ i, p i * Real.log (p i / q i) := by rw [hp1, hq1]; ring
+  linarith [step1]
+
+#print axioms pinsker

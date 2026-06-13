@@ -356,3 +356,153 @@ theorem relEntropy_pushforward_le {ι κ : Type*} [Fintype ι] [Fintype κ] [Dec
   rwa [Finset.sum_fiberwise Finset.univ f (fun i => p i * Real.log (p i / q i))] at hstep
 
 #print axioms relEntropy_pushforward_le
+
+/-!
+## Stochastic-kernel (Markov) data-processing inequality
+
+The general DPI: for any stochastic kernel `K` (`K i j ≥ 0`, `∑ j, K i j = 1`), pushing `p, q`
+through `K` cannot increase relative entropy. Each output `j` reduces to the log-sum inequality on
+the support `{i | K i j > 0}`, where `(p i K i j)/(q i K i j) = p i / q i`.
+-/
+
+/-- Per-output bound (one column of the kernel): the log-sum inequality on the support of `K`,
+after cancelling `K i` in the log argument. -/
+private lemma kernel_term {ι : Type*} [Fintype ι] (K : ι → ℝ) (hK0 : ∀ i, 0 ≤ K i)
+    (p q : ι → ℝ) (hp : ∀ i, 0 ≤ p i) (hq : ∀ i, 0 < q i) :
+    (∑ i, p i * K i) * Real.log ((∑ i, p i * K i) / (∑ i, q i * K i))
+      ≤ ∑ i, p i * K i * Real.log (p i / q i) := by
+  classical
+  set s := Finset.univ.filter (fun i => 0 < K i) with hs_def
+  -- Off the support, `K i = 0`, so all three sums restrict to `s`.
+  have hKzero : ∀ i, i ∉ s → K i = 0 := by
+    intro i hi
+    simp only [hs_def, Finset.mem_filter, Finset.mem_univ, true_and, not_lt] at hi
+    exact le_antisymm hi (hK0 i)
+  have ep : ∑ i, p i * K i = ∑ i ∈ s, p i * K i :=
+    (Finset.sum_subset (Finset.subset_univ s) (fun i _ hi => by rw [hKzero i hi, mul_zero])).symm
+  have eqK : ∑ i, q i * K i = ∑ i ∈ s, q i * K i :=
+    (Finset.sum_subset (Finset.subset_univ s) (fun i _ hi => by rw [hKzero i hi, mul_zero])).symm
+  have erhs : ∑ i, p i * K i * Real.log (p i / q i)
+      = ∑ i ∈ s, p i * K i * Real.log (p i / q i) :=
+    (Finset.sum_subset (Finset.subset_univ s)
+      (fun i _ hi => by rw [hKzero i hi, mul_zero, zero_mul])).symm
+  -- On the support, `q i K i > 0`, and the log argument simplifies to `p i / q i`.
+  have hb : ∀ i ∈ s, 0 < q i * K i := by
+    intro i hi
+    simp only [hs_def, Finset.mem_filter, Finset.mem_univ, true_and] at hi
+    exact mul_pos (hq i) hi
+  have hRHS : ∑ i ∈ s, p i * K i * Real.log (p i * K i / (q i * K i))
+      = ∑ i ∈ s, p i * K i * Real.log (p i / q i) := by
+    refine Finset.sum_congr rfl (fun i hi => ?_)
+    simp only [hs_def, Finset.mem_filter, Finset.mem_univ, true_and] at hi
+    rw [mul_div_mul_right _ _ hi.ne']
+  have hlog := log_sum_inequality s (fun i => p i * K i) (fun i => q i * K i)
+    (fun i _ => mul_nonneg (hp i) (hK0 i)) hb
+  rw [ep, eqK, erhs, ← hRHS]
+  exact hlog
+
+/-- **Data-processing inequality** for a stochastic kernel `K`: pushing `p, q` through `K`
+cannot increase the discrete relative entropy. -/
+theorem relEntropy_kernel_le {ι κ : Type*} [Fintype ι] [Fintype κ]
+    (K : ι → κ → ℝ) (hK0 : ∀ i j, 0 ≤ K i j) (hK1 : ∀ i, ∑ j, K i j = 1)
+    (p q : ι → ℝ) (hp : ∀ i, 0 ≤ p i) (hq : ∀ i, 0 < q i) :
+    ∑ j, (∑ i, p i * K i j) * Real.log ((∑ i, p i * K i j) / (∑ i, q i * K i j))
+      ≤ ∑ i, p i * Real.log (p i / q i) := by
+  calc ∑ j, (∑ i, p i * K i j) * Real.log ((∑ i, p i * K i j) / (∑ i, q i * K i j))
+      ≤ ∑ j, ∑ i, p i * K i j * Real.log (p i / q i) :=
+        Finset.sum_le_sum (fun j _ => kernel_term (fun i => K i j) (fun i => hK0 i j) p q hp hq)
+    _ = ∑ i, ∑ j, p i * K i j * Real.log (p i / q i) := Finset.sum_comm
+    _ = ∑ i, p i * Real.log (p i / q i) := by
+        refine Finset.sum_congr rfl (fun i _ => ?_)
+        rw [← Finset.sum_mul, ← Finset.mul_sum, hK1 i, mul_one]
+
+#print axioms relEntropy_kernel_le
+
+/-!
+## Joint convexity of relative entropy
+
+`(p, q) ↦ ∑ p i · log (p i / q i)` is jointly convex: mixing two pairs `(p₁,q₁)`, `(p₂,q₂)` with
+weight `lam` can only decrease the relative entropy of the mixture below the mixed entropies. Per
+coordinate this is the two-term log-sum inequality applied to `(lam p₁, (1-lam) p₂)` over
+`(lam q₁, (1-lam) q₂)`, with `lam` and `1 - lam` cancelling in the log arguments.
+-/
+
+/-- Two-term log-sum inequality (the `Fin 2` instance of `log_sum_inequality`). -/
+private lemma log_sum_two (x₁ x₂ y₁ y₂ : ℝ) (hx₁ : 0 ≤ x₁) (hx₂ : 0 ≤ x₂)
+    (hy₁ : 0 < y₁) (hy₂ : 0 < y₂) :
+    (x₁ + x₂) * Real.log ((x₁ + x₂) / (y₁ + y₂))
+      ≤ x₁ * Real.log (x₁ / y₁) + x₂ * Real.log (x₂ / y₂) := by
+  have h := log_sum_inequality (Finset.univ : Finset (Fin 2)) ![x₁, x₂] ![y₁, y₂]
+    (by intro i _; fin_cases i <;> simp_all)
+    (by intro i _; fin_cases i <;> simp_all)
+  simpa [Fin.sum_univ_two] using h
+
+/-- **Joint convexity** of discrete relative entropy in the pair `(p, q)`, for a single mixing
+weight `lam ∈ [0, 1]`. -/
+theorem relEntropy_jointly_convex {ι : Type*} [Fintype ι]
+    (p₁ q₁ p₂ q₂ : ι → ℝ)
+    (hp₁ : ∀ i, 0 ≤ p₁ i) (hq₁ : ∀ i, 0 < q₁ i)
+    (hp₂ : ∀ i, 0 ≤ p₂ i) (hq₂ : ∀ i, 0 < q₂ i)
+    (lam : ℝ) (hlam0 : 0 ≤ lam) (hlam1 : lam ≤ 1) :
+    (∑ i, (lam * p₁ i + (1 - lam) * p₂ i) *
+          Real.log ((lam * p₁ i + (1 - lam) * p₂ i) / (lam * q₁ i + (1 - lam) * q₂ i)))
+      ≤ lam * (∑ i, p₁ i * Real.log (p₁ i / q₁ i))
+        + (1 - lam) * (∑ i, p₂ i * Real.log (p₂ i / q₂ i)) := by
+  rcases eq_or_lt_of_le hlam0 with hl0 | hlam_pos
+  · subst hl0; simp
+  · rcases eq_or_lt_of_le hlam1 with hl1 | hlam_lt
+    · subst hl1; simp
+    · -- Interior `0 < lam < 1`: per-coordinate two-term log-sum, then sum.
+      have hlamne : lam ≠ 0 := hlam_pos.ne'
+      have hμpos : 0 < 1 - lam := by linarith
+      have hμne : (1 : ℝ) - lam ≠ 0 := hμpos.ne'
+      have hcoord : ∀ i, (lam * p₁ i + (1 - lam) * p₂ i) *
+            Real.log ((lam * p₁ i + (1 - lam) * p₂ i) / (lam * q₁ i + (1 - lam) * q₂ i))
+          ≤ lam * (p₁ i * Real.log (p₁ i / q₁ i))
+            + (1 - lam) * (p₂ i * Real.log (p₂ i / q₂ i)) := by
+        intro i
+        have h := log_sum_two (lam * p₁ i) ((1 - lam) * p₂ i) (lam * q₁ i) ((1 - lam) * q₂ i)
+          (mul_nonneg hlam0 (hp₁ i)) (mul_nonneg hμpos.le (hp₂ i))
+          (mul_pos hlam_pos (hq₁ i)) (mul_pos hμpos (hq₂ i))
+        rw [mul_div_mul_left _ _ hlamne, mul_div_mul_left _ _ hμne, mul_assoc, mul_assoc] at h
+        exact h
+      calc (∑ i, (lam * p₁ i + (1 - lam) * p₂ i) *
+              Real.log ((lam * p₁ i + (1 - lam) * p₂ i) / (lam * q₁ i + (1 - lam) * q₂ i)))
+          ≤ ∑ i, (lam * (p₁ i * Real.log (p₁ i / q₁ i))
+              + (1 - lam) * (p₂ i * Real.log (p₂ i / q₂ i))) :=
+            Finset.sum_le_sum (fun i _ => hcoord i)
+        _ = lam * (∑ i, p₁ i * Real.log (p₁ i / q₁ i))
+              + (1 - lam) * (∑ i, p₂ i * Real.log (p₂ i / q₂ i)) := by
+            rw [Finset.sum_add_distrib, ← Finset.mul_sum, ← Finset.mul_sum]
+
+#print axioms relEntropy_jointly_convex
+
+/-!
+## Non-negativity of mutual information
+
+`I(X;Y) = D(P_{XY} ‖ P_X ⊗ P_Y) ≥ 0`. This is `relEntropy_nonneg` over the index type `X × Y`,
+with the joint `r x y` against the product of marginals `(∑_{y'} r x y')·(∑_{x'} r x' y)`. The two
+normalization hypotheses follow from `Fintype.sum_prod_type` and `Finset.sum_mul_sum`.
+-/
+
+/-- **Non-negativity of mutual information**: for a joint probability mass function `r` with
+positive marginals, the mutual information `I(X;Y) = D(r ‖ marginal ⊗ marginal)` is non-negative. -/
+theorem mutualInfo_nonneg {X Y : Type*} [Fintype X] [Fintype Y]
+    (r : X → Y → ℝ) (hr : ∀ x y, 0 ≤ r x y)
+    (hr1 : ∑ x, ∑ y, r x y = 1)
+    (hX : ∀ x, 0 < ∑ y, r x y) (hY : ∀ y, 0 < ∑ x, r x y) :
+    0 ≤ ∑ x, ∑ y, r x y * Real.log (r x y / ((∑ y', r x y') * (∑ x', r x' y))) := by
+  -- Relative entropy of the joint against the product of marginals.
+  have key := relEntropy_nonneg
+    (fun xy : X × Y => r xy.1 xy.2)
+    (fun xy : X × Y => (∑ y', r xy.1 y') * (∑ x', r x' xy.2))
+    (fun xy => hr xy.1 xy.2)
+    (fun xy => mul_pos (hX xy.1) (hY xy.2))
+    (by rw [Fintype.sum_prod_type]; exact hr1)
+    (by
+      rw [Fintype.sum_prod_type]
+      change (∑ x, ∑ y, (∑ y', r x y') * (∑ x', r x' y)) = 1
+      rw [← Finset.sum_mul_sum, hr1, Finset.sum_comm, hr1, mul_one])
+  rwa [Fintype.sum_prod_type] at key
+
+#print axioms mutualInfo_nonneg

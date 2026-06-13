@@ -278,3 +278,81 @@ theorem pinsker {ι : Type*} [Fintype ι] (p q : ι → ℝ)
   linarith [step1]
 
 #print axioms pinsker
+
+/-!
+## The log-sum inequality
+
+`(∑ a i) * log ((∑ a i) / (∑ b i)) ≤ ∑ a i * log (a i / b i)` for `a ≥ 0`, `b > 0` on an arbitrary
+`Finset`. This is finite Jensen applied to the convex function `x ↦ x * log x` with weights
+`b i / B` and points `a i / b i` (where `B = ∑ b i`). It is the keystone behind the data-processing
+inequality and joint convexity of relative entropy.
+-/
+
+/-- The **log-sum inequality**: for nonnegative `a` and positive `b` on a `Finset`,
+`(∑ a i) · log ((∑ a i)/(∑ b i)) ≤ ∑ a i · log (a i / b i)`. -/
+theorem log_sum_inequality {ι : Type*} (s : Finset ι) (a b : ι → ℝ)
+    (ha : ∀ i ∈ s, 0 ≤ a i) (hb : ∀ i ∈ s, 0 < b i) :
+    (∑ i ∈ s, a i) * Real.log ((∑ i ∈ s, a i) / (∑ i ∈ s, b i))
+      ≤ ∑ i ∈ s, a i * Real.log (a i / b i) := by
+  rcases s.eq_empty_or_nonempty with hs | hs
+  · subst hs; simp
+  · set A := ∑ i ∈ s, a i with hA
+    set B := ∑ i ∈ s, b i with hB
+    have hBpos : 0 < B := Finset.sum_pos hb hs
+    have hBne : B ≠ 0 := hBpos.ne'
+    -- The weights `b i / B` are nonnegative and sum to `1`.
+    have hw1 : ∑ i ∈ s, b i / B = 1 := by
+      rw [← Finset.sum_div, ← hB, div_self hBne]
+    -- Finite Jensen for `φ x = x * log x` (convex on `[0, ∞)`).
+    have hjensen := Real.convexOn_mul_log.map_sum_le
+      (w := fun i => b i / B) (p := fun i => a i / b i)
+      (fun i hi => div_nonneg (hb i hi).le hBpos.le) hw1
+      (fun i hi => Set.mem_Ici.mpr (div_nonneg (ha i hi) (hb i hi).le))
+    simp only [smul_eq_mul] at hjensen
+    -- Simplify the Jensen argument and the right-hand sum (each `b i` cancels).
+    have eL : ∑ i ∈ s, b i / B * (a i / b i) = A / B := by
+      rw [hA, Finset.sum_div]
+      refine Finset.sum_congr rfl (fun i hi => ?_)
+      have hbi : b i ≠ 0 := (hb i hi).ne'
+      field_simp
+    have eR : ∑ i ∈ s, b i / B * (a i / b i * Real.log (a i / b i))
+        = (∑ i ∈ s, a i * Real.log (a i / b i)) / B := by
+      rw [Finset.sum_div]
+      refine Finset.sum_congr rfl (fun i hi => ?_)
+      have hbi : b i ≠ 0 := (hb i hi).ne'
+      field_simp
+    rw [eL, eR] at hjensen
+    -- `(A/B) log(A/B) ≤ (∑ …)/B`; clear the common positive denominator `B`.
+    rw [div_mul_eq_mul_div] at hjensen
+    rwa [div_le_div_iff_of_pos_right hBpos] at hjensen
+
+#print axioms log_sum_inequality
+
+/-!
+## Data-processing inequality for discrete relative entropy
+
+Under a deterministic map `f : ι → κ`, processing can only decrease relative entropy:
+`∑ j, (f∗p) j · log ((f∗p) j / (f∗q) j) ≤ ∑ i, p i · log (p i / q i)`, where `f∗` is the
+fiberwise pushforward. Each output term is the log-sum inequality on the fiber `f⁻¹{j}`.
+-/
+
+/-- Pushforward of `p : ι → ℝ` along `f : ι → κ`: the sum of `p` over each fiber of `f`. -/
+def pushforward {ι κ : Type*} [Fintype ι] [DecidableEq κ] (f : ι → κ) (p : ι → ℝ) (j : κ) : ℝ :=
+  ∑ i ∈ Finset.univ.filter (fun i => f i = j), p i
+
+/-- **Data-processing inequality** (deterministic): the discrete relative entropy of the
+pushforwards is at most that of the originals. -/
+theorem relEntropy_pushforward_le {ι κ : Type*} [Fintype ι] [Fintype κ] [DecidableEq κ]
+    (f : ι → κ) (p q : ι → ℝ) (hp : ∀ i, 0 ≤ p i) (hq : ∀ i, 0 < q i) :
+    ∑ j, pushforward f p j * Real.log (pushforward f p j / pushforward f q j)
+      ≤ ∑ i, p i * Real.log (p i / q i) := by
+  -- Per output `j`, the log-sum inequality on the fiber `f⁻¹{j}`; sum over `j`.
+  have hstep : ∑ j, pushforward f p j * Real.log (pushforward f p j / pushforward f q j)
+      ≤ ∑ j, ∑ i ∈ Finset.univ.filter (fun i => f i = j), p i * Real.log (p i / q i) := by
+    refine Finset.sum_le_sum (fun j _ => ?_)
+    exact log_sum_inequality (Finset.univ.filter (fun i => f i = j)) p q
+      (fun i _ => hp i) (fun i _ => hq i)
+  -- Collapse the fibered double sum back to the total sum.
+  rwa [Finset.sum_fiberwise Finset.univ f (fun i => p i * Real.log (p i / q i))] at hstep
+
+#print axioms relEntropy_pushforward_le

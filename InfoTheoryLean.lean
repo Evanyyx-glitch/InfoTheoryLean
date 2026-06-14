@@ -1,2 +1,4 @@
 import InfoTheoryLean.Basic
+import InfoTheoryLean.FDivergence
+import InfoTheoryLean.Generalization
 import InfoTheoryLean.Shannon

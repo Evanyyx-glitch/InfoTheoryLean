@@ -1,4 +1,5 @@
 import InfoTheoryLean.Basic
+import InfoTheoryLean.Duality
 import InfoTheoryLean.FDivergence
 import InfoTheoryLean.Generalization
 import InfoTheoryLean.Shannon

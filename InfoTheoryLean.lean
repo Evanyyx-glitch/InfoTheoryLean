@@ -1,5 +1,7 @@
 import InfoTheoryLean.Basic
+import InfoTheoryLean.CsiszarCharacterization
 import InfoTheoryLean.Duality
+import InfoTheoryLean.EntropyUniqueness
 import InfoTheoryLean.FDivergence
 import InfoTheoryLean.Generalization
 import InfoTheoryLean.Shannon

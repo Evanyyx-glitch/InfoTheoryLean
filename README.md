@@ -1,91 +1,107 @@
 # InfoTheoryLean
 
-A machine-checked development of discrete (finite-alphabet) information theory in
-[Lean 4](https://leanprover.github.io/) on top of [Mathlib](https://github.com/leanprover-community/mathlib4).
+Machine-checked **discrete information theory** in Lean 4 / Mathlib.
 
-The library has two parts:
+The library develops finite-alphabet information theory from a single analytic seed — Gibbs'
+inequality (non-negativity of relative entropy) — out to Shannon entropy, `f`-divergences,
+information-theoretic generalization bounds, and the convex-duality (variational) representation of
+divergences. On top of that core it proves three **classical foundational theorems**, each
+formalized here from its axioms:
 
-1. **A tower of core inequalities** for discrete relative entropy (Kullback–Leibler divergence),
-   Shannon entropy, `f`-divergences, and convex duality — Gibbs' inequality, Pinsker's inequality,
-   the data-processing inequality, joint convexity, Fano's inequality, the variational
-   (Donsker–Varadhan / Fenchel–Young) representations, and an information-theoretic generalization
-   bound.
+* **Shannon entropy uniqueness** (Faddeev / Shannon–Khinchin) — the entropy functional is forced
+  to be `C · (−∑ p log p)`;
+* **the `f`-divergence characterization** (Csiszár / Amari), both directions — the
+  `f`-divergences are exactly the continuous, decomposable, information-monotone divergences;
+* **algorithmic information theory** — a concrete universal machine over `Nat.Partrec.Code`, the
+  Kolmogorov-complexity **invariance theorem** (a universal machine is additively optimal), and
+  the Berry-paradox **uncomputability** of Kolmogorov complexity.
 
-2. **Two classical characterization theorems, each proved from its axioms:**
-   * the **Shannon–Khinchin uniqueness of entropy** — the only functional satisfying relabelling
-     invariance, the grouping/chain rule, monotonicity along the uniform distributions, and
-     continuity is (a constant multiple of) Shannon entropy; and
-   * the **Csiszár characterization of `f`-divergences** — the decomposable divergences that are
-     monotone under stochastic kernels (data processing) are exactly the `f`-divergences of a convex
-     generator.
+These are formalizations of *known* classical results, not new mathematics. The contribution is the
+machine-checked development itself — to our knowledge the first Lean formalizations of entropy
+uniqueness, the Csiszár characterization, and a concrete (non-axiomatic) AIT invariance +
+uncomputability theorem. See the per-file sections below for exact statements.
 
-These are formalizations of **known classical results**, not new mathematics. The contribution is
-the formalization itself: as far as we are aware, the entropy-uniqueness theorem and the Csiszár
-characterization are not currently in Mathlib, and are formalized here from scratch.
+> **On the AIT result.** A *synthetic* development of Kolmogorov complexity exists in Coq
+> (Forster, Kunze, Lauermann, *Synthetic Kolmogorov Complexity in Coq*, ITP 2022). The development
+> here is the first in Lean and is **concrete** — it builds on Mathlib's actual universal partial
+> recursive function `Nat.Partrec.Code.eval` rather than postulating a universal function — at the
+> cost of using a **unary** program codec. The unary codec gives a crude (linear, not logarithmic)
+> invariance constant; it is prefix-free and computable, which is all the invariance theorem needs.
+> The logarithmically-short self-delimiting codec is also formalized (`sdEncode`/`sdDecode`) and
+> verified, but its two-bit-stride decoder is not bridged to `Primrec` (see the note in
+> `Kolmogorov.lean`), so the universal machine is built on the unary codec.
+
+---
+
+## Dependency overview
+
+```
+                 Mathlib
+                /        \
+            Basic        Kolmogorov   (standalone: Nat.Partrec.Code)
+           /     \
+      Shannon   FDivergence
+       /   \         \
+Generalization \      Duality
+       EntropyUniqueness   CsiszarCharacterization
+```
+
+* **`Basic`** — Gibbs' inequality, the analytic seed everything (except `Kolmogorov`) descends from.
+* **`Shannon`** ← `Basic`; **`FDivergence`** ← `Basic`.
+* **`Generalization`** ← `Shannon`; **`Duality`** ← `FDivergence`.
+* **`EntropyUniqueness`** ← `Shannon`; **`CsiszarCharacterization`** ← `FDivergence`.
+* **`Kolmogorov`** ← `Mathlib` only (independent of the analytic core).
+
+The root module [`InfoTheoryLean.lean`](InfoTheoryLean.lean) imports all eight files.
+
+---
 
 ## Axiom cleanliness
 
-Every theorem in the library is checked with `#print axioms` (the `#print axioms ...` lines are kept
-inline in the sources). Each depends only on the three standard Lean/Mathlib foundational axioms
+The library is **`sorry`-free**. Every theorem depends only on the three standard Mathlib axioms
 
 ```
 [propext, Classical.choice, Quot.sound]
 ```
 
-with **no `sorryAx`** — i.e. there are no `sorry`s, no unproved lemmas, and no extra axioms anywhere
-in the development.
-
-## Building and verifying
-
-```sh
-lake exe cache get      # fetch the prebuilt Mathlib cache
-lake build              # build and check the whole library
-```
-
-A successful `lake build` is a complete proof check. To re-confirm the axiom guarantee for any
-result, inspect the `#print axioms` output emitted during the build, or add e.g.
-
-```lean
-#print axioms csiszar_characterization
-```
-
-## Module layout and dependencies
-
-```
-Mathlib
-  └─ Basic
-       ├─ Shannon
-       │    ├─ Generalization
-       │    └─ EntropyUniqueness
-       └─ FDivergence
-            ├─ Duality
-            └─ CsiszarCharacterization
-```
-
-* **Basic** — relative entropy: Gibbs, Pinsker, log-sum, data processing, joint convexity, mutual
-  information.
-* **Shannon** — Shannon entropy, mutual information / chain rule, conditional entropy, Fano.
-* **FDivergence** — `f`-divergences: non-negativity, data processing, joint convexity, and the KL /
-  χ² / total-variation / Hellinger instances.
-* **Duality** — variational (Fenchel–Young) representations; Donsker–Varadhan; DPI from duality.
-* **Generalization** — Donsker–Varadhan (easy direction), Hoeffding, and the mutual-information
-  generalization bound.
-* **EntropyUniqueness** — the Shannon–Khinchin uniqueness theorem for entropy.
-* **CsiszarCharacterization** — the Csiszár characterization of `f`-divergences.
-
-The root module `InfoTheoryLean.lean` imports all of the above.
+with **no `sorryAx`** and no `native_decide`. Several results depend on a strict subset (e.g. the
+self-delimiting codec round-trip `sdDecode_sdEncode` uses only `[propext, Quot.sound]`, and the
+unary round-trip `uDecode_uEncode` only `[propext]`). The end of `Kolmogorov.lean` carries
+`#print axioms` checks on its headline theorems; reproduce them as shown below.
 
 ---
 
-## `InfoTheoryLean/Basic.lean`
+## Build / verify
 
-The foundation: discrete relative entropy `D(p ‖ q) = ∑ p i · log (p i / q i)` and its core
-inequalities. Establishes Gibbs' inequality and its equality case, an analytically sharp finite
-Pinsker inequality (via a tuned quadratic lower bound on `x ↦ x log x + 1 − x`), the log-sum
-inequality (finite Jensen for `x ↦ x log x`), the data-processing inequality in both deterministic
-and stochastic-kernel forms, joint convexity of relative entropy, and non-negativity of mutual
-information. Several private lemmas (the Pinsker slack-function machinery, per-coordinate and
-per-output bounds) support these but are not part of the public interface.
+```sh
+lake exe cache get      # fetch prebuilt Mathlib oleans
+lake build              # build the whole library to zero errors / zero sorry
+```
+
+To inspect the axiom footprint of any result:
+
+```lean
+#print axioms entropy_uniqueness
+#print axioms csiszar_characterization
+#print axioms invariance
+#print axioms K_uncomputable
+```
+
+* Lean toolchain: `leanprover/lean4:v4.30.0`
+* Mathlib: `leanprover-community/mathlib` rev `v4.30.0`
+
+---
+
+# Contents by file
+
+## `Basic.lean` — Gibbs' inequality and relative-entropy convexity
+
+The analytic foundation: non-negativity of the discrete relative entropy (Kullback–Leibler
+divergence) `∑ p log (p/q)` via the termwise bound `log x ≤ x − 1`, its equality case, and the
+quantitative refinements built on it — Pinsker's inequality (KL controls total variation), the
+log-sum inequality, the data-processing inequalities for pushforwards and Markov kernels, joint
+convexity of relative entropy, and non-negativity of mutual information. Every later analytic result
+descends from these.
 
 ```lean
 theorem relEntropy_nonneg {ι : Type*} [Fintype ι] (p q : ι → ℝ)
@@ -144,15 +160,13 @@ theorem mutualInfo_nonneg {X Y : Type*} [Fintype X] [Fintype Y]
 
 ---
 
-## `InfoTheoryLean/Shannon.lean`
+## `Shannon.lean` — Shannon entropy and its inequalities
 
-Shannon entropy `H(p) = −∑ p i · log (p i)`, measured in nats, and the basic entropy theory.
-Proves non-negativity and the maximum-entropy bound (entropy `≤ log (card)`, attained at the
-uniform distribution, via Gibbs); defines joint entropy, mutual information and conditional entropy
-and proves the chain rule `I(X;Y) = H(X) + H(Y) − H(X,Y)`, that conditioning reduces entropy, and
-subadditivity. The chapter culminates in Fano's inequality: a core per-distribution bound, the
-concavity of the binary entropy function, conditional entropy as the expected entropy of the
-conditionals, and the assembled conditional Fano inequality.
+Defines Shannon entropy `H(p) = −∑ p log p` (in nats), joint/conditional entropy, and mutual
+information, then proves the standard bounds: non-negativity, the maximum-entropy bound
+`H ≤ log |ι|` (uniform attains it, via Gibbs), the chain-rule identities relating mutual information
+to joint and conditional entropy, sub-additivity, concavity of the binary entropy, and a Fano-style
+bound (`condEntropy_le_binEntropy_add`).
 
 ```lean
 noncomputable def entropy {ι : Type*} [Fintype ι] (p : ι → ℝ) : ℝ :=
@@ -172,14 +186,14 @@ noncomputable def jointEntropy {X Y : Type*} [Fintype X] [Fintype Y] (r : X → 
 noncomputable def mutualInfo {X Y : Type*} [Fintype X] [Fintype Y] (r : X → Y → ℝ) : ℝ :=
     ∑ x, ∑ y, r x y * Real.log (r x y / ((∑ y', r x y') * (∑ x', r x' y)))
 
+noncomputable def condEntropy {X Y : Type*} [Fintype X] [Fintype Y] (r : X → Y → ℝ) : ℝ :=
+    jointEntropy r - entropy (fun y => ∑ x, r x y)
+
 theorem mutualInfo_eq_entropy_add_sub_jointEntropy {X Y : Type*} [Fintype X] [Fintype Y]
     (r : X → Y → ℝ) (hr : ∀ x y, 0 ≤ r x y)
     (hX : ∀ x, 0 < ∑ y, r x y) (hY : ∀ y, 0 < ∑ x, r x y) :
     mutualInfo r
       = entropy (fun x => ∑ y, r x y) + entropy (fun y => ∑ x, r x y) - jointEntropy r
-
-noncomputable def condEntropy {X Y : Type*} [Fintype X] [Fintype Y] (r : X → Y → ℝ) : ℝ :=
-    jointEntropy r - entropy (fun y => ∑ x, r x y)
 
 theorem mutualInfo_eq_entropy_sub_condEntropy {X Y : Type*} [Fintype X] [Fintype Y]
     (r : X → Y → ℝ) (hr : ∀ x y, 0 ≤ r x y)
@@ -218,14 +232,14 @@ theorem condEntropy_le_binEntropy_add {X : Type*} [Fintype X]
 
 ---
 
-## `InfoTheoryLean/FDivergence.lean`
+## `FDivergence.lean` — `f`-divergences
 
-The `f`-divergence `D_f(P ‖ Q) = ∑ i, Q i · f (P i / Q i)` for a convex generator `f`, generalizing
-relative entropy. Proves non-negativity (convex Jensen, generalizing Gibbs), the abstract-`f`
-log-sum inequality, the stochastic-kernel data-processing inequality, and joint convexity. It then
-recovers four concrete divergences as instances — Kullback–Leibler (`f t = t log t`), Pearson χ²
-(`f t = (t−1)²`), total variation (`f t = |t−1|`), and squared Hellinger (`f t = (√t−1)²`) — proving
-for each a bridge identity to its closed form and non-negativity as a corollary of `fDiv_nonneg`.
+Defines the `f`-divergence `D_f(P ‖ Q) = ∑ Q · f(P/Q)` for a convex generator `f` with `f 1 = 0`,
+and proves its non-negativity (convex Jensen — directly generalizing Gibbs, the case `f = x log x`),
+the `f`-divergence log-sum inequality, the data-processing inequality through Markov kernels, and
+joint convexity. It then identifies the classical divergences as instances: KL relative entropy
+(`f = x log x`), the χ² divergence, total variation, and the squared Hellinger distance, each with
+its closed form and non-negativity.
 
 ```lean
 noncomputable def fDiv {ι : Type*} [Fintype ι] (f : ℝ → ℝ) (P Q : ι → ℝ) : ℝ :=
@@ -290,18 +304,66 @@ theorem hellinger_nonneg {ι : Type*} [Fintype ι] (P Q : ι → ℝ)
 
 ---
 
-## `InfoTheoryLean/Duality.lean`
+## `Generalization.lean` — information-theoretic generalization bounds
 
-Convex duality for `f`-divergences. The master inequality is the variational (Fenchel–Young) lower
-bound: for any Fenchel–Young pair `(f, f*)` and test function `g`,
-`(∑ P · g) − (∑ Q · f*(g)) ≤ D_f(P ‖ Q)`. From it the chapter derives the Gibbs variational
-principle for KL, both halves of the Donsker–Varadhan representation packaged as `IsGreatest`,
-the general-`f` strong-duality `IsGreatest` statement (with achievability supplied through the
-conjugate-at-the-derivative identity), the KL instance of that, and finally the data-processing
-inequality re-derived from the variational representation (via the kernel adjoint and row-wise
-Jensen). The two abstract inputs `hYoung` (Fenchel–Young inequality) and `hconj`
-(conjugate-at-the-derivative equality) keep the conjugate `f*` parametric, avoiding differentiation
-inside Lean.
+Develops the chain from the Donsker–Varadhan inequality (easy direction) to mutual-information
+generalization bounds. From `relEntropy_nonneg` against an exponentially-tilted reference it proves
+the Donsker–Varadhan bound; an AM–GM optimization and a sub-gaussian decoupling lemma then yield the
+mutual-information generalization bound, with a fully discharged bounded-loss instance via Hoeffding's
+lemma (the scalar `log-mgf` bound and its sum form).
+
+```lean
+theorem donsker_varadhan_le {ι : Type*} [Fintype ι] (P Q : ι → ℝ) (g : ι → ℝ)
+    (hP : ∀ i, 0 < P i) (hQ : ∀ i, 0 ≤ Q i) (hP1 : ∑ i, P i = 1) (hQ1 : ∑ i, Q i = 1) :
+    (∑ i, Q i * g i) - Real.log (∑ i, P i * Real.exp (g i)) ≤ ∑ i, Q i * Real.log (Q i / P i)
+
+theorem amgm_opt_le {a c d : ℝ} (hc : 0 ≤ c) (hd : 0 < d)
+    (h : ∀ lam : ℝ, 0 < lam → a ≤ c / lam + lam * d) :
+    a ≤ 2 * Real.sqrt (c * d)
+
+theorem subgaussian_decouple {ι : Type*} [Fintype ι] (P Q : ι → ℝ) (X : ι → ℝ) (σ : ℝ)
+    (hP : ∀ i, 0 < P i) (hQ : ∀ i, 0 ≤ Q i) (hP1 : ∑ i, P i = 1) (hQ1 : ∑ i, Q i = 1)
+    (hσ : 0 < σ)
+    (hsg : ∀ lam : ℝ, Real.log (∑ i, P i * Real.exp (lam * X i))
+              ≤ lam * (∑ i, P i * X i) + lam ^ 2 * σ ^ 2 / 2) :
+    (∑ i, Q i * X i) - (∑ i, P i * X i)
+      ≤ Real.sqrt (2 * σ ^ 2 * (∑ i, Q i * Real.log (Q i / P i)))
+
+theorem hoeffding_scalar (p : ℝ) (hp0 : 0 ≤ p) (hp1 : p ≤ 1) (h : ℝ) :
+    Real.log (1 - p + p * Real.exp h) - p * h ≤ h ^ 2 / 8
+
+theorem hoeffding_mgf {ι : Type*} [Fintype ι] (P : ι → ℝ) (X : ι → ℝ) (a b : ℝ)
+    (hP : ∀ i, 0 < P i) (hP1 : ∑ i, P i = 1)
+    (hab : a < b) (hXa : ∀ i, a ≤ X i) (hXb : ∀ i, X i ≤ b) (lam : ℝ) :
+    Real.log (∑ i, P i * Real.exp (lam * X i))
+      ≤ lam * (∑ i, P i * X i) + lam ^ 2 * (b - a) ^ 2 / 8
+
+theorem mutualInfo_generalization_bound {ζ ω : Type*} [Fintype ζ] [Fintype ω]
+    (J : ζ → ω → ℝ) (X : ζ → ω → ℝ) (σ : ℝ)
+    (hJ : ∀ z w, 0 < J z w) (hJ1 : ∑ z, ∑ w, J z w = 1) (hσ : 0 < σ)
+    (hsg : ∀ lam : ℝ,
+        Real.log (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * Real.exp (lam * X z w))
+          ≤ lam * (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w) + lam ^ 2 * σ ^ 2 / 2) :
+    (∑ z, ∑ w, J z w * X z w) - (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w)
+      ≤ Real.sqrt (2 * σ ^ 2 * mutualInfo J)
+
+theorem mutualInfo_generalization_bound_bounded {ζ ω : Type*} [Fintype ζ] [Fintype ω]
+    (J : ζ → ω → ℝ) (X : ζ → ω → ℝ) (c d : ℝ)
+    (hJ : ∀ z w, 0 < J z w) (hJ1 : ∑ z, ∑ w, J z w = 1)
+    (hcd : c < d) (hXc : ∀ z w, c ≤ X z w) (hXd : ∀ z w, X z w ≤ d) :
+    (∑ z, ∑ w, J z w * X z w) - (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w)
+      ≤ Real.sqrt ((d - c) ^ 2 / 2 * mutualInfo J)
+```
+
+---
+
+## `Duality.lean` — convex (variational) duality for divergences
+
+The convex-duality summit. Proves the variational (Fenchel–Young) lower bound for `f`-divergences —
+parametrized by a Fenchel–Young pair `(f, f*)` to avoid defining the conjugate as a supremum — and
+derives the Donsker–Varadhan / Gibbs variational principle for KL as a special case, including the
+sharp `IsGreatest` (attained-supremum) statements. Closes with a variational-form proof of the
+divergence data-processing inequality through a kernel.
 
 ```lean
 theorem fDiv_variational {ι : Type*} [Fintype ι] (f fStar : ℝ → ℝ) (P Q g : ι → ℝ)
@@ -360,72 +422,16 @@ theorem fDiv_kernel_le_of_variational {𝒳 𝒴 : Type*} [Fintype 𝒳] [Fintyp
 
 ---
 
-## `InfoTheoryLean/Generalization.lean`
+## ★ `EntropyUniqueness.lean` — Shannon entropy uniqueness (Faddeev / Shannon–Khinchin)
 
-Information-theoretic generalization bounds, built on the easy (one-sided) Donsker–Varadhan
-inequality. From the variational bound and an AM–GM optimization lemma it derives a sub-Gaussian
-decoupling inequality controlling a change of mean from `P` to `Q` by `√(2σ²·D(Q ‖ P))`. The
-sub-Gaussian hypothesis is then discharged by Hoeffding's lemma (proved here from a scalar
-convexity core). The headline result is the Xu–Raginsky mutual-information generalization bound,
-stated abstractly and then as an end-to-end corollary for bounded loss functions.
-
-```lean
-theorem donsker_varadhan_le {ι : Type*} [Fintype ι] (P Q : ι → ℝ) (g : ι → ℝ)
-    (hP : ∀ i, 0 < P i) (hQ : ∀ i, 0 ≤ Q i) (hP1 : ∑ i, P i = 1) (hQ1 : ∑ i, Q i = 1) :
-    (∑ i, Q i * g i) - Real.log (∑ i, P i * Real.exp (g i)) ≤ ∑ i, Q i * Real.log (Q i / P i)
-
-theorem amgm_opt_le {a c d : ℝ} (hc : 0 ≤ c) (hd : 0 < d)
-    (h : ∀ lam : ℝ, 0 < lam → a ≤ c / lam + lam * d) :
-    a ≤ 2 * Real.sqrt (c * d)
-
-theorem subgaussian_decouple {ι : Type*} [Fintype ι] (P Q : ι → ℝ) (X : ι → ℝ) (σ : ℝ)
-    (hP : ∀ i, 0 < P i) (hQ : ∀ i, 0 ≤ Q i) (hP1 : ∑ i, P i = 1) (hQ1 : ∑ i, Q i = 1)
-    (hσ : 0 < σ)
-    (hsg : ∀ lam : ℝ, Real.log (∑ i, P i * Real.exp (lam * X i))
-              ≤ lam * (∑ i, P i * X i) + lam ^ 2 * σ ^ 2 / 2) :
-    (∑ i, Q i * X i) - (∑ i, P i * X i)
-      ≤ Real.sqrt (2 * σ ^ 2 * (∑ i, Q i * Real.log (Q i / P i)))
-
-theorem hoeffding_scalar (p : ℝ) (hp0 : 0 ≤ p) (hp1 : p ≤ 1) (h : ℝ) :
-    Real.log (1 - p + p * Real.exp h) - p * h ≤ h ^ 2 / 8
-
-theorem hoeffding_mgf {ι : Type*} [Fintype ι] (P : ι → ℝ) (X : ι → ℝ) (a b : ℝ)
-    (hP : ∀ i, 0 < P i) (hP1 : ∑ i, P i = 1)
-    (hab : a < b) (hXa : ∀ i, a ≤ X i) (hXb : ∀ i, X i ≤ b) (lam : ℝ) :
-    Real.log (∑ i, P i * Real.exp (lam * X i))
-      ≤ lam * (∑ i, P i * X i) + lam ^ 2 * (b - a) ^ 2 / 8
-
-theorem mutualInfo_generalization_bound {ζ ω : Type*} [Fintype ζ] [Fintype ω]
-    (J : ζ → ω → ℝ) (X : ζ → ω → ℝ) (σ : ℝ)
-    (hJ : ∀ z w, 0 < J z w) (hJ1 : ∑ z, ∑ w, J z w = 1) (hσ : 0 < σ)
-    (hsg : ∀ lam : ℝ,
-        Real.log (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * Real.exp (lam * X z w))
-          ≤ lam * (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w) + lam ^ 2 * σ ^ 2 / 2) :
-    (∑ z, ∑ w, J z w * X z w) - (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w)
-      ≤ Real.sqrt (2 * σ ^ 2 * mutualInfo J)
-
-theorem mutualInfo_generalization_bound_bounded {ζ ω : Type*} [Fintype ζ] [Fintype ω]
-    (J : ζ → ω → ℝ) (X : ζ → ω → ℝ) (c d : ℝ)
-    (hJ : ∀ z w, 0 < J z w) (hJ1 : ∑ z, ∑ w, J z w = 1)
-    (hcd : c < d) (hXc : ∀ z w, c ≤ X z w) (hXd : ∀ z w, X z w ≤ d) :
-    (∑ z, ∑ w, J z w * X z w) - (∑ z, ∑ w, ((∑ w', J z w') * (∑ z', J z' w)) * X z w)
-      ≤ Real.sqrt ((d - c) ^ 2 / 2 * mutualInfo J)
-```
-
----
-
-## `InfoTheoryLean/EntropyUniqueness.lean`
-
-The Shannon–Khinchin uniqueness theorem for entropy, proved from scratch. The analytic heart is a
-classical squeeze argument showing the only monotone function `f : ℕ → ℝ` with `f(mn) = f m + f n`
-is a constant multiple of the logarithm. This is bootstrapped — through the grouping axiom applied
-to products of uniform distributions, and then to variable-block-size sigma types — to force the
-value of an axiomatic entropy functional `H` on uniform and then on rational distributions. With
-continuity of `H` and a density argument (rational distributions approximating an arbitrary one),
-the value is pinned on all finite distributions: `H = (H(uniform₂)/log 2) · entropy`, and, under the
-one-bit normalization `H(uniform₂) = log 2`, `H` *is* Shannon entropy. The functional `H` is taken
-polymorphically over all finite alphabets, and the Shannon–Khinchin axioms (relabelling invariance,
-grouping/chain rule, monotonicity along uniforms, continuity) are supplied as hypotheses.
+**Foundational result.** Proves that any functional `H`, polymorphic over finite alphabets,
+satisfying the Shannon–Khinchin / Faddeev axioms — *relabeling invariance* (`hrelabel`), the
+*grouping / recursivity* law (`hgroup`), *monotonicity on uniform distributions* (`hmonoU`), and
+*continuity* (`hcont`) — must equal `(H(uniform₂)/log 2) · (−∑ p log p)`; with the normalization
+`H(uniform₂) = log 2` it is exactly Shannon entropy. Mathlib (`v4.30.0`) has no such
+characterization, so the analytic core is proved from scratch: the centerpiece `additive_mono_eq_log`
+shows that a monotone function turning multiplication into addition is forced to be a constant
+multiple of `log`, by the classical `⌊k log₂ n⌋` squeeze.
 
 ```lean
 theorem pow_le_pow_of_mul_log_le {a b p q : ℕ} (ha : 1 ≤ a) (hb : 1 ≤ b)
@@ -438,8 +444,6 @@ theorem additive_mono_eq_log (f : ℕ → ℝ)
 
 noncomputable def uniformDist (n : ℕ) : Fin n → ℝ := fun _ => 1 / (n : ℝ)
 
-def fiberFstEquiv {α β : Type*} [DecidableEq α] (j : α) : {x : α × β // x.1 = j} ≃ β
-
 theorem uniform_entropy_eq_log
     (H : {ι : Type} → [Fintype ι] → (ι → ℝ) → ℝ)
     (hrelabel : ∀ {ι κ : Type} [Fintype ι] [Fintype κ] (e : ι ≃ κ) (p : κ → ℝ),
@@ -451,9 +455,6 @@ theorem uniform_entropy_eq_log
                    * H (fun i : {x // φ x = j} => p i.1 / ∑ i', if φ i' = j then p i' else 0))
     (hmonoU : Monotone (fun n => H (uniformDist n))) :
     ∀ n, 1 ≤ n → H (uniformDist n) = (H (uniformDist 2) / Real.log 2) * Real.log n
-
-def fiberSigmaFstEquiv {n : ℕ} (a : Fin n → ℕ) (j : Fin n) :
-    {x : Σ i : Fin n, Fin (a i) // x.fst = j} ≃ Fin (a j)
 
 theorem rational_entropy_eq
     (H : {ι : Type} → [Fintype ι] → (ι → ℝ) → ℝ)
@@ -470,9 +471,6 @@ theorem rational_entropy_eq
 
 theorem continuous_entropy {ι : Type} [Fintype ι] :
     Continuous (fun p : ι → ℝ => entropy p)
-
-theorem tendsto_floorApprox (x : ℝ) (hx : 0 ≤ x) :
-    Filter.Tendsto (fun N : ℕ => ((⌊(N : ℝ) * x⌋₊ : ℝ) + 1) / (N : ℝ)) Filter.atTop (nhds x)
 
 theorem entropy_uniqueness
     (H : {ι : Type} → [Fintype ι] → (ι → ℝ) → ℝ)
@@ -504,21 +502,19 @@ theorem entropy_uniqueness_normalized
 
 ---
 
-## `InfoTheoryLean/CsiszarCharacterization.lean`
+## ★ `CsiszarCharacterization.lean` — the `f`-divergence characterization (Csiszár / Amari)
 
-The Csiszár characterization of `f`-divergences, proved from scratch. A divergence functional is
-*information-monotone* if pushing `(P, Q)` through any stochastic kernel cannot increase it (the
-data-processing inequality, stated as a property of the functional). The easy direction
-(`fDiv_infoMonotone`) shows every `f`-divergence with convex generator is information-monotone — a
-thin wrapper around `fDiv_kernel_le`. The hard direction works with *decomposable* divergences
-`∑ i, d (P i) (Q i)`: information monotonicity alone forces the generator `d` to satisfy an additive
-functional equation under equal ratios (`decompDiv_funeq`, from a merge and a lossless-split
-kernel); this functional equation plus continuity forces the homogeneity `d p q = q · d (p/q) 1`
-(`decompDiv_ratio_form`, by a Cauchy-style integer → rational → real ladder); and the lossy
-(superadditive) half of data processing forces the generator `r ↦ d r 1` to be convex
-(`generator_convex`). Assembling these, `csiszar_characterization` exhibits any decomposable,
-information-monotone, continuous divergence as the `f`-divergence of a convex generator — the
-converse to the easy direction. A regularity (continuity) hypothesis on `d` is genuinely necessary.
+**Foundational result.** Characterizes the `f`-divergences as exactly the divergence functionals
+that are *information-monotone* (cannot increase under any stochastic/Markov kernel), continuous, and
+*decomposable* (`decompDiv d P Q = ∑ d(P i, Q i)`). Both directions are formalized:
+
+* **Easy direction (`⟸`), `fDiv_infoMonotone`** — every `f`-divergence with convex generator is
+  information-monotone (the kernel data-processing inequality, repackaged).
+* **Hard direction (`⟹`), `csiszar_characterization`** — every continuous decomposable
+  information-monotone divergence *is* an `f`-divergence: there exists a convex generator `f` with
+  `decompDiv d P Q = fDiv f P Q`. The proof extracts the generator from the diagonal `r ↦ d(r,1)`,
+  showing kernel-monotonicity forces homogeneity `d(p,q) = q·d(p/q,1)`, superadditivity, and
+  convexity of the generator.
 
 ```lean
 def InfoMonotone (D : {ι : Type} → [Fintype ι] → (ι → ℝ) → (ι → ℝ) → ℝ) : Prop :=
@@ -565,4 +561,120 @@ theorem csiszar_characterization (d : ℝ → ℝ → ℝ)
 
 ---
 
-*License: Apache 2.0 (see `LICENSE`). Author: Yuyang Xiao.*
+## ★ `Kolmogorov.lean` — algorithmic information theory
+
+**Foundational result.** A concrete development of Kolmogorov complexity over Mathlib's universal
+partial recursive function `Nat.Partrec.Code.eval`, culminating in the **invariance theorem** (the
+universal machine is additively optimal) and the **uncomputability** of Kolmogorov complexity (via
+Berry's paradox). Built bottom-up.
+
+**1. Prefix-free self-delimiting codec.** `sdEncode` writes `n` in binary, doubles each bit, and
+appends the terminator `[false, true]`; `sdDecode` recovers `(n, rest)` from any concatenation. The
+overhead is logarithmic (`≤ 2·Nat.size n + 2`) — the additive constant the invariance theorem wants.
+
+```lean
+def fromBits : List Bool → ℕ
+  | [] => 0
+  | b :: bs => b.toNat + 2 * fromBits bs
+
+theorem fromBits_bits (n : ℕ) : fromBits (Nat.bits n) = n
+
+def double : List Bool → List Bool
+  | [] => []
+  | b :: bs => b :: b :: double bs
+
+def sdEncode (n : ℕ) : List Bool := double (Nat.bits n) ++ [false, true]
+
+def sdDecodeBits : List Bool → Option (List Bool × List Bool)
+  | false :: true  :: rest => some ([], rest)
+  | false :: false :: rest => (sdDecodeBits rest).map fun p => (false :: p.1, p.2)
+  | true  :: true  :: rest => (sdDecodeBits rest).map fun p => (true :: p.1, p.2)
+  | _ => none
+
+def sdDecode (l : List Bool) : Option (ℕ × List Bool) :=
+  (sdDecodeBits l).map fun p => (fromBits p.1, p.2)
+
+theorem sdDecode_sdEncode (n : ℕ) (rest : List Bool) :
+    sdDecode (sdEncode n ++ rest) = some (n, rest)
+
+theorem sdEncode_length_eq (n : ℕ) : (sdEncode n).length = 2 * Nat.size n + 2
+
+theorem sdEncode_length_le (n : ℕ) : (sdEncode n).length ≤ 2 * Nat.size n + 2
+```
+
+**2. Computability layer.** `fromBits`, `double`, `Nat.bits`, and `sdEncode` are shown primitive
+recursive / computable (`Nat.bits` via a `nat_iterate` fuel recast). The self-delimiting decoder's
+two-bit-stride recursion does not fit Mathlib's single-step `Primrec.list_rec`, so it is **not**
+bridged to `Primrec` (documented in-file); the universal machine therefore uses the unary codec below.
+
+```lean
+theorem computable_fromBits : Computable fromBits
+theorem computable_double : Computable double
+theorem primrec_natBits : Primrec Nat.bits
+theorem computable_natBits : Computable Nat.bits
+theorem computable_sdEncode : Computable sdEncode
+```
+
+**3. Unary fallback codec** (computable both ways). `uEncode n = trueⁿ ++ [false]`; the decoder
+counts the leading `true`s. Crude (linear length) but prefix-free and computable by single-step
+structural recursion — sufficient for invariance.
+
+```lean
+def uEncode (n : ℕ) : List Bool := List.replicate n true ++ [false]
+
+def uDecode : List Bool → ℕ × List Bool
+  | [] => (0, [])
+  | true :: l => ((uDecode l).1 + 1, (uDecode l).2)
+  | false :: l => (0, l)
+
+theorem uDecode_uEncode (n : ℕ) (p : List Bool) : uDecode (uEncode n ++ p) = (n, p)
+
+theorem computable_uEncode : Computable uEncode
+theorem computable_uDecode : Computable uDecode
+```
+
+**4. Universal machine.** `phiE e` runs the code decoded from `e` on the encoded input; `U` decodes
+its input via the unary codec into an index/program pair and runs `phiE`. `U` is partial recursive
+(via Mathlib's universality `Nat.Partrec.Code.eval_part`), and `phiE` enumerates *all* partial
+recursive functions on bit strings (`phiE_complete`, from `Nat.Partrec.Code.exists_code`).
+
+```lean
+noncomputable def phiE (e : ℕ) : List Bool →. ℕ :=
+  fun p => eval (Denumerable.ofNat Code e) (Encodable.encode p)
+
+noncomputable def U : List Bool →. ℕ :=
+  fun w => phiE (uDecode w).1 (uDecode w).2
+
+theorem U_partrec : Partrec U
+
+theorem phiE_complete (φ : List Bool →. ℕ) (hφ : Partrec φ) :
+    ∃ e, ∀ p, φ p = phiE e p
+```
+
+**5. Kolmogorov complexity and the invariance theorem.** `C φ x` is the shortest program length
+making `φ` output `x` (in `ℕ∞`, `⊤` if undescribable). The invariance theorem: the universal machine
+`U` is optimal up to an additive constant depending on `φ` but not on `x`.
+
+```lean
+noncomputable def C (φ : List Bool →. ℕ) (x : ℕ) : ℕ∞ :=
+  sInf ((fun p => (p.length : ℕ∞)) '' {p : List Bool | x ∈ φ p})
+
+theorem invariance (φ : List Bool →. ℕ) (hφ : Partrec φ) :
+    ∃ c : ℕ, ∀ x, C U x ≤ C φ x + (c : ℕ∞)
+```
+
+**6. Unboundedness and uncomputability.** Only finitely many strings have short programs, so
+complexity is unbounded (`C_unbounded`, the counting lemma); and if `C U` were computable a
+Berry-style selector would name a high-complexity string with a short program — so `C U` is not
+computable (`K_uncomputable`).
+
+```lean
+theorem C_unbounded (n : ℕ) : ∃ x : ℕ, (n : ℕ∞) ≤ C U x
+
+theorem K_uncomputable :
+    ¬ ∃ g : ℕ → ℕ, Computable g ∧ ∀ x, (g x : ℕ∞) = C U x
+```
+
+---
+
+*Formalizations of known classical results. Lean 4 / Mathlib `v4.30.0`.*

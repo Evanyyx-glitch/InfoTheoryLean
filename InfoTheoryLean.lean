@@ -4,4 +4,5 @@ import InfoTheoryLean.Duality
 import InfoTheoryLean.EntropyUniqueness
 import InfoTheoryLean.FDivergence
 import InfoTheoryLean.Generalization
+import InfoTheoryLean.Kolmogorov
 import InfoTheoryLean.Shannon
